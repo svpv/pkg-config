@@ -316,7 +316,10 @@ split_module_list (const char *str, const char *path)
         {
         case OUTSIDE_MODULE:
           if (!MODULE_SEPARATOR (*p))
-            state = IN_MODULE_NAME;          
+            {
+              state = IN_MODULE_NAME;
+              start = p;
+            }
           break;
 
         case IN_MODULE_NAME:
@@ -327,11 +330,7 @@ split_module_list (const char *str, const char *path)
               while (*s && isspace ((guchar)*s))
                 ++s;
 
-              if (*s == '\0')
-                state = OUTSIDE_MODULE;
-              else if (MODULE_SEPARATOR (*s))
-                state = OUTSIDE_MODULE;
-              else if (OPERATOR_CHAR (*s))
+              if (OPERATOR_CHAR (*s))
                 state = BEFORE_OPERATOR;
               else
                 state = OUTSIDE_MODULE;
@@ -390,7 +389,7 @@ split_module_list (const char *str, const char *path)
       ++p;
     }
 
-  if (p != start)
+  if (state != OUTSIDE_MODULE)
     {
       /* get the last module */
       char *module = g_strndup (start, p - start);
@@ -429,28 +428,18 @@ parse_module_list (Package *pkg, const char *str, const char *path)
       ver->owner = pkg;
       retval = g_list_prepend (retval, ver);
       
-      while (*p && MODULE_SEPARATOR (*p))
-        ++p;
-      
       start = p;
 
       while (*p && !isspace ((guchar)*p))
         ++p;
 
-      while (*p && MODULE_SEPARATOR (*p))
+      while (*p && isspace ((guchar)*p))
         {
           *p = '\0';
           ++p;
         }
 
-      if (*start == '\0')
-        {
-          verbose_error ("Empty package name in Requires or Conflicts in file '%s'\n", path);
-          if (parse_strict)
-            exit (1);
-          else
-            continue;
-        }
+      g_assert (*start != '\0');
       
       ver->name = g_strdup (start);
 
