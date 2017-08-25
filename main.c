@@ -761,54 +761,62 @@ main (int argc, char **argv)
        }
    }
 
-  if (want_requires)
+  if (want_requires || want_requires_private)
     {
       GList *pkgtmp;
       for (pkgtmp = packages; pkgtmp != NULL; pkgtmp = g_list_next (pkgtmp))
         {
           Package *pkg = pkgtmp->data;
           GList *reqtmp;
+          GHashTable *seen = g_hash_table_new (g_str_hash, g_str_equal);
 
-          /* process Requires: */
-          for (reqtmp = pkg->requires; reqtmp != NULL; reqtmp = g_list_next (reqtmp))
+          /* Process Requires. */
+          for (reqtmp = pkg->requires_entries;
+               reqtmp != NULL; reqtmp = g_list_next (reqtmp))
             {
-              Package *deppkg = reqtmp->data;
-              RequiredVersion *req;
-              req = g_hash_table_lookup(pkg->required_versions, deppkg->key);
-              if ((req == NULL) || (req->comparison == ALWAYS_MATCH))
-                printf ("%s\n", deppkg->key);
-              else
-                printf ("%s %s %s\n", deppkg->key,
-                  comparison_to_str(req->comparison),
-                  req->version);
-            }
-        }
-    }
-  if (want_requires_private)
-    {
-      GList *pkgtmp;
-      for (pkgtmp = packages; pkgtmp != NULL; pkgtmp = g_list_next (pkgtmp))
-        {
-          Package *pkg = pkgtmp->data;
-          GList *reqtmp;
-          /* process Requires.private: */
-          for (reqtmp = pkg->requires_private; reqtmp != NULL; reqtmp = g_list_next (reqtmp))
-            {
-
-              Package *deppkg = reqtmp->data;
-              RequiredVersion *req;
-
-              if (g_list_find (pkg->requires, reqtmp->data))
+              RequiredVersion *req = reqtmp->data;
+              g_hash_table_add (seen, req->name);
+              if (!want_requires)
                 continue;
-
-              req = g_hash_table_lookup(pkg->required_versions, deppkg->key);
-              if ((req == NULL) || (req->comparison == ALWAYS_MATCH))
-                printf ("%s\n", deppkg->key);
+              if (req->comparison == ALWAYS_MATCH)
+                printf ("%s\n", req->name);
               else
-                printf ("%s %s %s\n", deppkg->key,
-                  comparison_to_str(req->comparison),
+                printf ("%s %s %s\n", req->name,
+                  comparison_to_str (req->comparison),
                   req->version);
             }
+
+          /* Enhance Requires with versioned Requires.private. */
+          if (want_requires)
+          for (reqtmp = pkg->requires_private_entries;
+               reqtmp != NULL; reqtmp = g_list_next (reqtmp))
+            {
+              RequiredVersion *req = reqtmp->data;
+              if (req->comparison == ALWAYS_MATCH)
+                continue;
+              if (g_hash_table_lookup (seen, req->name) == NULL)
+                continue;
+              printf ("%s %s %s\n", req->name,
+                comparison_to_str (req->comparison),
+                req->version);
+            }
+
+          /* Print the rest of Requires.private. */
+          if (want_requires_private)
+          for (reqtmp = pkg->requires_private_entries;
+               reqtmp != NULL; reqtmp = g_list_next (reqtmp))
+            {
+              RequiredVersion *req = reqtmp->data;
+              if (g_hash_table_lookup (seen, req->name) != NULL)
+                continue;
+              if (req->comparison == ALWAYS_MATCH)
+                printf ("%s\n", req->name);
+              else
+                printf ("%s %s %s\n", req->name,
+                  comparison_to_str (req->comparison),
+                  req->version);
+            }
+          g_hash_table_destroy (seen);
         }
     }
   
