@@ -406,12 +406,12 @@ split_module_list (const char *str, const char *path)
   return retval;
 }
 
-GList *
-parse_module_list (Package *pkg, const char *str, const char *path)
+static void
+do_parse_module_list (Package *pkg, GList **listp,
+                      const char *str, const char *path)
 {
   GList *split;
   GList *iter;
-  GList *retval = NULL;
 
   split = split_module_list (str, path);
 
@@ -426,7 +426,7 @@ parse_module_list (Package *pkg, const char *str, const char *path)
       ver = g_new0 (RequiredVersion, 1);
       ver->comparison = ALWAYS_MATCH;
       ver->owner = pkg;
-      retval = g_list_prepend (retval, ver);
+      *listp = g_list_prepend (*listp, ver);
       
       start = p;
 
@@ -515,65 +515,21 @@ parse_module_list (Package *pkg, const char *str, const char *path)
   g_list_foreach (split, (GFunc) g_free, NULL);
   g_list_free (split);
 
-  retval = g_list_reverse (retval);
+}
 
-  return retval;
+GList *
+parse_module_list (Package *pkg, const char *str, const char *path)
+{
+  GList *list = NULL;
+  do_parse_module_list (pkg, &list, str, path);
+  return g_list_reverse (list);
 }
 
 static void
-parse_requires (Package *pkg, const char *str, const char *path)
+parse_deps (Package *pkg, GList **listp, const char *str, const char *path)
 {
-  char *trimmed;
-
-  if (pkg->requires)
-    {
-      verbose_error ("Requires field occurs twice in '%s'\n", path);
-      if (parse_strict)
-        exit (1);
-      else
-        return;
-    }
-
-  trimmed = trim_and_sub (pkg, str, path);
-  pkg->requires_entries = parse_module_list (pkg, trimmed, path);
-  g_free (trimmed);
-}
-
-static void
-parse_requires_private (Package *pkg, const char *str, const char *path)
-{
-  char *trimmed;
-
-  if (pkg->requires_private)
-    {
-      verbose_error ("Requires.private field occurs twice in '%s'\n", path);
-      if (parse_strict)
-        exit (1);
-      else
-        return;
-    }
-
-  trimmed = trim_and_sub (pkg, str, path);
-  pkg->requires_private_entries = parse_module_list (pkg, trimmed, path);
-  g_free (trimmed);
-}
-
-static void
-parse_conflicts (Package *pkg, const char *str, const char *path)
-{
-  char *trimmed;
-  
-  if (pkg->conflicts)
-    {
-      verbose_error ("Conflicts field occurs twice in '%s'\n", path);
-      if (parse_strict)
-        exit (1);
-      else
-        return;
-    }
-
-  trimmed = trim_and_sub (pkg, str, path);
-  pkg->conflicts = parse_module_list (pkg, trimmed, path);
+  char *trimmed = trim_and_sub (pkg, str, path);
+  do_parse_module_list (pkg, listp, trimmed, path);
   g_free (trimmed);
 }
 
@@ -942,12 +898,12 @@ parse_line (Package *pkg, const char *untrimmed, const char *path,
       else if (strcmp (tag, "Requires.private") == 0)
 	{
 	  if (!ignore_requires_private)
-	    parse_requires_private (pkg, p, path);
+	    parse_deps (pkg, &pkg->requires_private_entries, p, path);
 	}
       else if (strcmp (tag, "Requires") == 0)
 	{
           if (ignore_requires == FALSE)
-	    parse_requires (pkg, p, path);
+	    parse_deps (pkg, &pkg->requires_entries, p, path);
           else
 	    goto cleanup;
         }
@@ -962,7 +918,7 @@ parse_line (Package *pkg, const char *untrimmed, const char *path,
                strcmp (tag, "CFlags") == 0)
         parse_cflags (pkg, p, path);
       else if (strcmp (tag, "Conflicts") == 0)
-        parse_conflicts (pkg, p, path);
+        parse_deps (pkg, &pkg->conflicts, p, path);
       else if (strcmp (tag, "URL") == 0)
         parse_url (pkg, p, path);
       else
@@ -1133,6 +1089,10 @@ parse_package_file (const char *key, const char *path,
                    path);
   g_string_free (str, TRUE);
   fclose(f);
+
+  pkg->requires_entries = g_list_reverse (pkg->requires_entries);
+  pkg->requires_private_entries = g_list_reverse (pkg->requires_private_entries);
+  pkg->conflicts = g_list_reverse (pkg->conflicts);
 
   pkg->cflags = g_list_reverse (pkg->cflags);
   pkg->libs = g_list_reverse (pkg->libs);
