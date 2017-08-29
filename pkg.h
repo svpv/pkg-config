@@ -78,7 +78,6 @@ struct Package_
   GList *libs;
   GList *cflags;
   GHashTable *vars;
-  GHashTable *required_versions; /* hash from name to RequiredVersion */
   GList *conflicts; /* list of RequiredVersion */
   gboolean uninstalled; /* used the -uninstalled file */
   int path_position; /* used to order packages by position in path of their .pc file, lower number means earlier in path */

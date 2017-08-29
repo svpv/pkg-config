@@ -219,6 +219,105 @@ package_init (gboolean want_list)
     add_virtual_pkgconfig_package ();
 }
 
+static void
+verify_req_version (Package *pkg, Package *req, RequiredVersion *ver)
+{
+  if (version_test (ver->comparison, req->version, ver->version))
+    return;
+  verbose_error ("Package '%s' requires '%s %s %s' but version of %s is %s\n",
+                 pkg->key, req->key,
+                 comparison_to_str (ver->comparison),
+                 ver->version,
+                 req->key,
+                 req->version);
+  if (req->url)
+    verbose_error ("You may find new versions of %s at %s\n",
+                   req->name, req->url);
+  exit (1);
+}
+
+static void
+load_requires (Package *pkg, gboolean warn)
+{
+  GList *iter;
+  GHashTable *seen = g_hash_table_new (g_str_hash, g_str_equal);
+
+  /* Pull in Requires packages. */
+  for (iter = pkg->requires_entries; iter != NULL; iter = g_list_next (iter))
+    {
+      Package *req;
+      RequiredVersion *ver = iter->data;
+
+      debug_spew ("Searching for '%s' requirement '%s'\n",
+                  pkg->key, ver->name);
+      req = internal_get_package (ver->name, warn);
+      if (req == NULL)
+        {
+          verbose_error ("Package '%s', required by '%s', not found\n",
+                         ver->name, pkg->key);
+          exit (1);
+        }
+
+      verify_req_version (pkg, req, ver);
+
+      g_hash_table_insert (seen, ver->name, req);
+
+      pkg->requires = g_list_prepend (pkg->requires, req);
+    }
+
+  /* Check enhanced versions.  That is, if there are both "Requires: foo"
+   * and "Requires.private: foo >= ver", the latter is checked on behalf
+   * of Requires. */
+  if (ignore_requires_private)
+  for (iter = pkg->requires_private_entries;
+       iter != NULL; iter = g_list_next (iter))
+    {
+      Package *req;
+      RequiredVersion *ver = iter->data;
+
+      if (ver->comparison == ALWAYS_MATCH)
+        continue;
+
+      req = g_hash_table_lookup (seen, ver->name);
+      if (req == NULL)
+        continue;
+
+      verify_req_version (pkg, req, ver);
+    }
+
+  g_hash_table_destroy (seen);
+
+  /* Pull in Requires.private packages. */
+  if (!ignore_requires_private)
+  for (iter = pkg->requires_private_entries;
+       iter != NULL; iter = g_list_next (iter))
+    {
+      Package *req;
+      RequiredVersion *ver = iter->data;
+
+      debug_spew ("Searching for '%s' private requirement '%s'\n",
+                  pkg->key, ver->name);
+      req = internal_get_package (ver->name, warn);
+      if (req == NULL)
+        {
+          verbose_error ("Package '%s', required by '%s', not found\n",
+			 ver->name, pkg->key);
+          exit (1);
+        }
+
+      verify_req_version (pkg, req, ver);
+
+      pkg->requires_private = g_list_prepend (pkg->requires_private, req);
+    }
+
+  /* make requires_private include a copy of the public requires too */
+  pkg->requires_private = g_list_concat (g_list_copy (pkg->requires),
+                                         pkg->requires_private);
+
+  pkg->requires = g_list_reverse (pkg->requires);
+  pkg->requires_private = g_list_reverse (pkg->requires_private);
+}
+
 static Package *
 internal_get_package (const char *name, gboolean warn)
 {
@@ -226,7 +325,6 @@ internal_get_package (const char *name, gboolean warn)
   char *key = NULL;
   char *location = NULL;
   unsigned int path_position = 0;
-  GList *iter;
   GList *dir_iter;
   
   pkg = g_hash_table_lookup (packages, name);
@@ -322,59 +420,10 @@ internal_get_package (const char *name, gboolean warn)
   debug_spew ("Adding '%s' to list of known packages\n", pkg->key);
   g_hash_table_insert (packages, pkg->key, pkg);
 
-  /* pull in Requires packages */
-  for (iter = pkg->requires_entries; iter != NULL; iter = g_list_next (iter))
-    {
-      Package *req;
-      RequiredVersion *ver = iter->data;
-
-      debug_spew ("Searching for '%s' requirement '%s'\n",
-                  pkg->key, ver->name);
-      req = internal_get_package (ver->name, warn);
-      if (req == NULL)
-        {
-          verbose_error ("Package '%s', required by '%s', not found\n",
-                         ver->name, pkg->key);
-          exit (1);
-        }
-
-      if (pkg->required_versions == NULL)
-        pkg->required_versions = g_hash_table_new (g_str_hash, g_str_equal);
-
-      g_hash_table_insert (pkg->required_versions, ver->name, ver);
-      pkg->requires = g_list_prepend (pkg->requires, req);
-    }
-
-  /* pull in Requires.private packages */
-  for (iter = pkg->requires_private_entries; iter != NULL;
-       iter = g_list_next (iter))
-    {
-      Package *req;
-      RequiredVersion *ver = iter->data;
-
-      debug_spew ("Searching for '%s' private requirement '%s'\n",
-                  pkg->key, ver->name);
-      req = internal_get_package (ver->name, warn);
-      if (req == NULL)
-        {
-          verbose_error ("Package '%s', required by '%s', not found\n",
-			 ver->name, pkg->key);
-          exit (1);
-        }
-
-      if (pkg->required_versions == NULL)
-        pkg->required_versions = g_hash_table_new (g_str_hash, g_str_equal);
-
-      g_hash_table_insert (pkg->required_versions, ver->name, ver);
-      pkg->requires_private = g_list_prepend (pkg->requires_private, req);
-    }
-
-  /* make requires_private include a copy of the public requires too */
-  pkg->requires_private = g_list_concat (g_list_copy (pkg->requires),
-                                         pkg->requires_private);
-
-  pkg->requires = g_list_reverse (pkg->requires);
-  pkg->requires_private = g_list_reverse (pkg->requires_private);
+  if (!ignore_requires)
+    load_requires (pkg, warn);
+  else /* Requires ignored => Requires.private should also be ignored. */
+    g_assert (ignore_requires_private);
 
   verify_package (pkg);
 
@@ -684,40 +733,6 @@ verify_package (Package *pkg)
       verbose_error ("Package '%s' has no Description: field\n",
                      pkg->key);
       exit (1);
-    }
-  
-  /* Make sure we have the right version for all requirements */
-
-  iter = pkg->requires_private;
-
-  while (iter != NULL)
-    {
-      Package *req = iter->data;
-      RequiredVersion *ver = NULL;
-
-      if (pkg->required_versions)
-        ver = g_hash_table_lookup (pkg->required_versions,
-                                   req->key);
-
-      if (ver)
-        {
-          if (!version_test (ver->comparison, req->version, ver->version))
-            {
-              verbose_error ("Package '%s' requires '%s %s %s' but version of %s is %s\n",
-                             pkg->key, req->key,
-                             comparison_to_str (ver->comparison),
-                             ver->version,
-                             req->key,
-                             req->version);
-              if (req->url)
-                verbose_error ("You may find new versions of %s at %s\n",
-                               req->name, req->url);
-
-              exit (1);
-            }
-        }
-                                   
-      iter = g_list_next (iter);
     }
 
   /* Make sure we didn't drag in any conflicts via Requires
