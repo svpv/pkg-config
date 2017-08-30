@@ -220,6 +220,32 @@ package_init (gboolean want_list)
 }
 
 static void
+verify_info (Package *pkg)
+{
+  /* Be sure we have the required fields */
+  if (pkg->name == NULL)
+    {
+      verbose_error ("Package '%s' has no Name: field\n",
+                     pkg->key);
+      exit (1);
+    }
+
+  if (pkg->version == NULL)
+    {
+      verbose_error ("Package '%s' has no Version: field\n",
+                     pkg->key);
+      exit (1);
+    }
+
+  if (pkg->description == NULL)
+    {
+      verbose_error ("Package '%s' has no Description: field\n",
+                     pkg->key);
+      exit (1);
+    }
+}
+
+static void
 verify_req_version (Package *pkg, Package *req, RequiredVersion *ver)
 {
   if (version_test (ver->comparison, req->version, ver->version))
@@ -412,6 +438,8 @@ internal_get_package (const char *name, gboolean warn)
       return NULL;
     }
 
+  g_assert (pkg->key != NULL);
+
   pkg->path_position = path_position;
 
   debug_spew ("Path position of '%s' is %d\n",
@@ -419,6 +447,8 @@ internal_get_package (const char *name, gboolean warn)
   
   debug_spew ("Adding '%s' to list of known packages\n", pkg->key);
   g_hash_table_insert (packages, pkg->key, pkg);
+
+  verify_info (pkg);
 
   if (!ignore_requires)
     load_requires (pkg, warn);
@@ -704,36 +734,6 @@ verify_package (Package *pkg)
   const gchar *search_path;
   const gchar **include_envvars;
   const gchar **var;
-
-  /* Be sure we have the required fields */
-
-  if (pkg->key == NULL)
-    {
-      fprintf (stderr,
-               "Internal pkg-config error, package with no key, please file a bug report\n");
-      exit (1);
-    }
-  
-  if (pkg->name == NULL)
-    {
-      verbose_error ("Package '%s' has no Name: field\n",
-                     pkg->key);
-      exit (1);
-    }
-
-  if (pkg->version == NULL)
-    {
-      verbose_error ("Package '%s' has no Version: field\n",
-                     pkg->key);
-      exit (1);
-    }
-
-  if (pkg->description == NULL)
-    {
-      verbose_error ("Package '%s' has no Description: field\n",
-                     pkg->key);
-      exit (1);
-    }
 
   /* Make sure we didn't drag in any conflicts via Requires
    * (inefficient algorithm, who cares)
