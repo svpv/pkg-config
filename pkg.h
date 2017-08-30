@@ -76,13 +76,12 @@ struct Package_
   GList *requires_private_entries;
   GList *requires_private;
   GList *libs;
+  GList *libs_private;
   GList *cflags;
   GHashTable *vars;
   GList *conflicts; /* list of RequiredVersion */
   gboolean uninstalled; /* used the -uninstalled file */
   int path_position; /* used to order packages by position in path of their .pc file, lower number means earlier in path */
-  int libs_num; /* Number of times the "Libs" header has been seen */
-  int libs_private_num;  /* Number of times the "Libs.private" header has been seen */
   char *orig_prefix; /* original prefix value before redefinition */
 };
 

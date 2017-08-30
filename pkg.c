@@ -423,8 +423,7 @@ internal_get_package (const char *name, gboolean warn)
     }
 
   debug_spew ("Reading '%s' from file '%s'\n", name, location);
-  pkg = parse_package_file (key, location, ignore_requires,
-                            ignore_private_libs, ignore_requires_private);
+  pkg = parse_package_file (key, location);
   g_free (key);
 
   if (pkg != NULL && strstr (location, "uninstalled.pc"))
@@ -871,6 +870,12 @@ verify_package (Package *pkg)
     }
 
   system_directories = add_env_variable_to_list (system_directories, search_path);
+
+  if (ignore_private_libs)
+    g_list_free (pkg->libs_private);
+  else
+    pkg->libs = g_list_concat (pkg->libs, pkg->libs_private);
+  pkg->libs_private = NULL;
 
   count = 0;
   for (iter = pkg->libs; iter != NULL; iter = g_list_next (iter))

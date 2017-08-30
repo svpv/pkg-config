@@ -562,7 +562,8 @@ static char *strdup_escape_shell(const char *s)
 	return r;
 }
 
-static void _do_parse_libs (Package *pkg, int argc, char **argv)
+static void
+do_parse_libs (GList **listp, int argc, char **argv)
 {
   int i;
 #ifdef G_OS_WIN32
@@ -597,7 +598,7 @@ static void _do_parse_libs (Package *pkg, int argc, char **argv)
 
           flag->type = LIBS_l;
           flag->arg = g_strconcat (l_flag, p, lib_suffix, NULL);
-          pkg->libs = g_list_prepend (pkg->libs, flag);
+          *listp = g_list_prepend (*listp, flag);
         }
       else if (p[0] == '-' &&
                p[1] == 'L')
@@ -608,7 +609,7 @@ static void _do_parse_libs (Package *pkg, int argc, char **argv)
 
           flag->type = LIBS_L;
           flag->arg = g_strconcat (L_flag, p, NULL);
-          pkg->libs = g_list_prepend (pkg->libs, flag);
+          *listp = g_list_prepend (*listp, flag);
 	}
       else if ((strcmp("-framework", p) == 0 ||
                 strcmp("-Wl,-framework", p) == 0) &&
@@ -624,7 +625,7 @@ static void _do_parse_libs (Package *pkg, int argc, char **argv)
           framework = strdup_escape_shell(tmp);
           flag->type = LIBS_OTHER;
           flag->arg = g_strconcat (arg, " ", framework, NULL);
-          pkg->libs = g_list_prepend (pkg->libs, flag);
+          *listp = g_list_prepend (*listp, flag);
           i++;
           g_free (framework);
           g_free (tmp);
@@ -633,7 +634,7 @@ static void _do_parse_libs (Package *pkg, int argc, char **argv)
         {
           flag->type = LIBS_OTHER;
           flag->arg = g_strdup (arg);
-          pkg->libs = g_list_prepend (pkg->libs, flag);
+          *listp = g_list_prepend (*listp, flag);
         }
       else
         /* flag wasn't used */
@@ -646,33 +647,22 @@ static void _do_parse_libs (Package *pkg, int argc, char **argv)
 
 }
 
-
 static void
-parse_libs (Package *pkg, const char *str, const char *path)
+parse_libs (Package *pkg, GList **listp, const char *field,
+            const char *str, const char *path)
 {
-  /* Strip out -l and -L flags, put them in a separate list. */
-  
   char *trimmed;
   char **argv = NULL;
   int argc = 0;
   GError *error = NULL;
-  
-  if (pkg->libs_num > 0)
-    {
-      verbose_error ("Libs field occurs twice in '%s'\n", path);
-      if (parse_strict)
-        exit (1);
-      else
-        return;
-    }
   
   trimmed = trim_and_sub (pkg, str, path);
 
   if (trimmed && *trimmed &&
       !g_shell_parse_argv (trimmed, &argc, &argv, &error))
     {
-      verbose_error ("Couldn't parse Libs field into an argument vector: %s\n",
-                     error ? error->message : "unknown");
+      verbose_error ("Couldn't parse %s field into an argument vector: %s\n",
+                     field, error ? error->message : "unknown");
       if (parse_strict)
         exit (1);
       else
@@ -682,64 +672,10 @@ parse_libs (Package *pkg, const char *str, const char *path)
         }
     }
 
-  _do_parse_libs(pkg, argc, argv);
+  do_parse_libs (listp, argc, argv);
 
   g_free (trimmed);
   g_strfreev (argv);
-  pkg->libs_num++;
-}
-
-static void
-parse_libs_private (Package *pkg, const char *str, const char *path)
-{
-  /*
-    List of private libraries.  Private libraries are libraries which
-    are needed in the case of static linking or on platforms not
-    supporting inter-library dependencies.  They are not supposed to
-    be used for libraries which are exposed through the library in
-    question.  An example of an exposed library is GTK+ exposing Glib.
-    A common example of a private library is libm.
-    
-    Generally, if include another library's headers in your own, it's
-    a public dependency and not a private one.
-  */
-  
-  char *trimmed;
-  char **argv = NULL;
-  int argc = 0;
-  GError *error = NULL;
-  
-  if (pkg->libs_private_num > 0)
-    {
-      verbose_error ("Libs.private field occurs twice in '%s'\n", path);
-      if (parse_strict)
-        exit (1);
-      else
-        return;
-    }
-  
-  trimmed = trim_and_sub (pkg, str, path);
-
-  if (trimmed && *trimmed &&
-      !g_shell_parse_argv (trimmed, &argc, &argv, &error))
-    {
-      verbose_error ("Couldn't parse Libs.private field into an argument vector: %s\n",
-                     error ? error->message : "unknown");
-      if (parse_strict)
-        exit (1);
-      else
-        {
-          g_free (trimmed);
-          return;
-        }
-    }
-
-  _do_parse_libs(pkg, argc, argv);
-
-  g_strfreev (argv);
-  g_free (trimmed);
-
-  pkg->libs_private_num++;
 }
 
 static void
@@ -850,9 +786,7 @@ parse_url (Package *pkg, const char *str, const char *path)
 }
 
 static void
-parse_line (Package *pkg, const char *untrimmed, const char *path,
-	    gboolean ignore_requires, gboolean ignore_private_libs,
-	    gboolean ignore_requires_private)
+parse_line (Package *pkg, const char *untrimmed, const char *path)
 {
   char *str;
   char *p;
@@ -896,24 +830,13 @@ parse_line (Package *pkg, const char *untrimmed, const char *path,
       else if (strcmp (tag, "Version") == 0)
         parse_version (pkg, p, path);
       else if (strcmp (tag, "Requires.private") == 0)
-	{
-	  if (!ignore_requires_private)
-	    parse_deps (pkg, &pkg->requires_private_entries, p, path);
-	}
+        parse_deps (pkg, &pkg->requires_private_entries, p, path);
       else if (strcmp (tag, "Requires") == 0)
-	{
-          if (ignore_requires == FALSE)
-	    parse_deps (pkg, &pkg->requires_entries, p, path);
-          else
-	    goto cleanup;
-        }
+        parse_deps (pkg, &pkg->requires_entries, p, path);
       else if (strcmp (tag, "Libs.private") == 0)
-        {
-          if (!ignore_private_libs)
-            parse_libs_private (pkg, p, path);
-        }
+        parse_libs (pkg, &pkg->libs_private, "Libs.private", p, path);
       else if (strcmp (tag, "Libs") == 0)
-        parse_libs (pkg, p, path);
+        parse_libs (pkg, &pkg->libs, "Libs", p, path);
       else if (strcmp (tag, "Cflags") == 0 ||
                strcmp (tag, "CFlags") == 0)
         parse_cflags (pkg, p, path);
@@ -1031,10 +954,7 @@ parse_line (Package *pkg, const char *untrimmed, const char *path,
 }
 
 Package*
-parse_package_file (const char *key, const char *path,
-                    gboolean ignore_requires,
-                    gboolean ignore_private_libs,
-                    gboolean ignore_requires_private)
+parse_package_file (const char *key, const char *path)
 {
   FILE *f;
   Package *pkg;
@@ -1078,8 +998,7 @@ parse_package_file (const char *key, const char *path,
     {
       one_line = TRUE;
       
-      parse_line (pkg, str->str, path, ignore_requires, ignore_private_libs,
-		  ignore_requires_private);
+      parse_line (pkg, str->str, path);
 
       g_string_truncate (str, 0);
     }
@@ -1096,6 +1015,7 @@ parse_package_file (const char *key, const char *path,
 
   pkg->cflags = g_list_reverse (pkg->cflags);
   pkg->libs = g_list_reverse (pkg->libs);
+  pkg->libs_private = g_list_reverse (pkg->libs_private);
   
   return pkg;
 }
