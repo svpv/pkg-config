@@ -689,15 +689,6 @@ parse_cflags (Package *pkg, const char *str, const char *path)
   GError *error = NULL;
   int i;
   
-  if (pkg->cflags)
-    {
-      verbose_error ("Cflags field occurs twice in '%s'\n", path);
-      if (parse_strict)
-        exit (1);
-      else
-        return;
-    }
-  
   trimmed = trim_and_sub (pkg, str, path);
 
   if (trimmed && *trimmed &&
