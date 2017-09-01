@@ -49,6 +49,7 @@ static GList *search_dirs = NULL;
 gboolean disable_uninstalled = FALSE;
 gboolean ignore_requires = FALSE;
 gboolean ignore_requires_private = TRUE;
+gboolean tolerate_missing_requires_private = FALSE;
 gboolean ignore_private_libs = TRUE;
 
 void
@@ -323,9 +324,12 @@ load_requires (Package *pkg, gboolean warn)
 
       debug_spew ("Searching for '%s' private requirement '%s'\n",
                   pkg->key, ver->name);
-      req = internal_get_package (ver->name, warn);
+      req = internal_get_package (ver->name,
+                  tolerate_missing_requires_private ? FALSE : warn);
       if (req == NULL)
         {
+          if (tolerate_missing_requires_private)
+            continue;
           verbose_error ("Package '%s', required by '%s', not found\n",
 			 ver->name, pkg->key);
           exit (1);
@@ -1239,9 +1243,10 @@ disable_requires(void)
 }
 
 void
-enable_requires_private(void)
+enable_requires_private(gboolean tolerate_missing)
 {
   ignore_requires_private = FALSE;
+  tolerate_missing_requires_private = tolerate_missing;
 }
 
 void

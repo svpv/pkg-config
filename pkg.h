@@ -118,7 +118,7 @@ void enable_private_libs(void);
 void disable_private_libs(void);
 void enable_requires(void);
 void disable_requires(void);
-void enable_requires_private(void);
+void enable_requires_private(gboolean tolerate_missing);
 void disable_requires_private(void);
 
 /* If TRUE, do not automatically prefer uninstalled versions */

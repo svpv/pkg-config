@@ -51,6 +51,7 @@ static gboolean want_provides = FALSE;
 static gboolean want_requires = FALSE;
 static gboolean want_requires_private = FALSE;
 static gboolean want_validate = FALSE;
+static gboolean want_recursion = TRUE;
 static char *required_atleast_version = NULL;
 static char *required_exact_version = NULL;
 static char *required_max_version = NULL;
@@ -465,6 +466,8 @@ static const GOptionEntry options_table[] = {
     "linking", NULL },
   { "validate", 0, G_OPTION_FLAG_NO_ARG, G_OPTION_ARG_CALLBACK,
     &output_opt_cb, "validate a package's .pc file", NULL },
+  { "disable-recursion", 0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE,
+    &want_recursion, "disable loading of dependencies", NULL },
   { "define-prefix", 0, 0, G_OPTION_ARG_NONE, &define_prefix,
     "try to override the value of prefix for each .pc file found with a "
     "guesstimated value based on the location of the .pc file", NULL },
@@ -613,17 +616,45 @@ main (int argc, char **argv)
   else
     disable_private_libs();
 
-  /* honor Requires.private if any Cflags are requested or any static
-   * libs are requested */
+  /*
+   * Cflags-only dependencies, such as those resulting from #include
+   * directives, should be listed on behalf of Requires.private rather
+   * than Requires, the manual says.  This is to avoid overlinking.
+   * But this also makes Requires.private dependencies mandatory,
+   * even for non-static linking.  This leads to ugly dependencies
+   * like gtk+-3.0 requiring a bunch of wayland-*-devel packages
+   * simply because it was built with --enable-wayland-backend.
+   * The following knob suggests one possible way out of this
+   * predicament: 1) packages should list only Requires and not
+   * Requires.private; 2) Requires.private dependencies are mandatory
+   * only for --static --libs, and also for --print-requires-private;
+   * 3) Requires.private is enabled for --cflags, but missing modules,
+   * such as wayland-* in the above example, are silently ignored.
+   * To work smoothly, this solution needs extra support in the
+   * distro's packaging system, and therefore cannot be enabled
+   * by default.  Specifically, the packaging system needs to use
+   * an additional dependency generator, known as cpp.req,
+   * which tracks #include directives in the header files.
+   */
+#define TOLERATE_MISSING_REQUIRES_PRIVATE FALSE
 
-  if (pkg_flags & CFLAGS_ANY || want_requires_private || want_exists ||
-      (want_static_lib_list && (pkg_flags & LIBS_ANY)))
-    enable_requires_private();
-
-  /* ignore Requires if no Cflags or Libs are requested */
-
-  if (pkg_flags == 0 && !want_requires && !want_exists)
-    disable_requires();
+  /* Loading of dependencies explicitly disabled? */
+  if (!want_recursion)
+    disable_requires ();
+  /* No need to load Requires; probably in --validate mode. */
+  else if (pkg_flags == 0 && !want_exists &&
+           !want_requires && !want_requires_private)
+    disable_requires ();
+  /* Need to enable Requires.private unconditinally. */
+  else if (want_requires_private ||
+           (want_static_lib_list && (pkg_flags & LIBS_ANY)))
+    enable_requires_private (FALSE);
+  /* Conservative --exists needs to check for Requires.private. */
+  else if (want_exists && !TOLERATE_MISSING_REQUIRES_PRIVATE)
+    enable_requires_private (FALSE);
+  /* Enable Requires.private conditionally for --cflags. */
+  else if (pkg_flags & CFLAGS_ANY)
+    enable_requires_private (TOLERATE_MISSING_REQUIRES_PRIVATE);
 
   /* Allow errors in .pc files when listing all. */
   if (want_list)
