@@ -31,6 +31,7 @@ TESTS = \
 	check-variables \
 	check-dependencies \
 	check-system-flags \
+	check-multiline \
 	$(NULL)
 
 EXTRA_DIST = \
@@ -118,4 +119,5 @@ EXTRA_DIST = \
 	dependencies/j_dep_k.pc \
 	dependencies/k_dep.pc \
 	system.pc \
+	multiline.pc \
 	$(NULL)

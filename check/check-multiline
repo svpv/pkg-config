@@ -1,0 +1,11 @@
+#! /bin/sh
+
+set -e
+
+. ${srcdir}/common
+
+RESULT="-la -lb -lc -ld -le -lf"
+run_test --static --libs multiline
+
+RESULT="-I/1 -I/2"
+run_test --cflags multiline

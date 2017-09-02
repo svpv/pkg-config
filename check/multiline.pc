@@ -1,0 +1,9 @@
+Name: Multiline test
+Version: 1.0.0
+Description: Dummy package for testing fields spanning multiple lines
+Libs.private: -ld -le
+Libs.private: -lf
+Libs: -la
+Libs: -lb -lc
+Cflags: -I/1
+Cflags: -I/2
