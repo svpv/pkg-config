@@ -1,0 +1,23 @@
+#! /bin/sh
+
+set -e
+
+. ${srcdir}/common
+
+# Check that versioned Requires.private are printed on behalf of Requires.
+RESULT="public-dep > 0
+public-dep >= 1"
+run_test --print-requires enhanced-ver
+
+# Also check that Requires.private aren't checked with --print-requires.
+run_test --define-variable=private_ver=2 --print-requires enhanced-ver
+
+# Check that Requires are excluded from Requires.private.
+RESULT="private-dep >= 1"
+run_test --print-requires-private enhanced-ver
+
+# Check that versioned Requires.private are actually checked
+# on behalf of Requires before being printed.
+RESULT="Package 'enhanced-ver' requires 'public-dep >= 2' but version of public-dep is 1.0.0"
+EXPECT_RETURN=1 \
+run_test --define-variable=public_ver=2 --print-requires enhanced-ver

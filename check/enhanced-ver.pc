@@ -1,0 +1,9 @@
+public_ver=1
+private_ver=1
+
+Name: Enhanced version test
+Version: 1.0.0
+Description: Dummy package for testing versioned Requires.private on behalf of Requires
+Requires: public-dep > 0
+Requires.private: public-dep >= ${public_ver}
+Requires.private: private-dep >= ${private_ver}
