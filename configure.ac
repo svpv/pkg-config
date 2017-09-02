@@ -38,6 +38,7 @@ AC_CHECK_PROG([LN], [ln], [ln], [cp -Rp])
 
 dnl Check for headers
 AC_CHECK_HEADERS([dirent.h unistd.h sys/wait.h malloc.h])
+AC_CHECK_FUNCS(getc_unlocked)
 
 dnl A POSIX shell is required for the tests. If TEST_SHELL hasn't been
 dnl set on the command line then we try to find bash or ksh or sh from

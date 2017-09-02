@@ -34,6 +34,11 @@
 #endif
 #include <sys/types.h>
 
+/* If getc_unlocked is not available, fall back to getc. */
+#if !defined(getc_unlocked) && !defined(HAVE_GETC_UNLOCKED)
+#define getc_unlocked getc
+#endif
+
 gboolean parse_strict = TRUE;
 gboolean define_prefix = ENABLE_DEFINE_PREFIX;
 char *prefix_variable = "prefix";
@@ -64,9 +69,7 @@ read_one_line (FILE *stream, GString *str)
   
   while (1)
     {
-      int c;
-      
-      c = getc (stream);
+      int c = getc_unlocked (stream);
 
       if (c == EOF)
 	{
@@ -90,7 +93,7 @@ read_one_line (FILE *stream, GString *str)
 	    case '\r':
 	    case '\n':
 	      {
-		int next_c = getc (stream);
+		int next_c = getc_unlocked (stream);
 
 		if (!(c == EOF ||
 		      (c == '\r' && next_c == '\n') ||
@@ -117,7 +120,7 @@ read_one_line (FILE *stream, GString *str)
 	      break;
 	    case '\n':
 	      {
-		int next_c = getc (stream);
+		int next_c = getc_unlocked (stream);
 
 		if (!(c == EOF ||
 		      (c == '\r' && next_c == '\n') ||
